@@ -1,0 +1,232 @@
+//verificar interfaces
+ifconfig
+
+//configurar interfaces
+nano /etc/network/interfaces
+
+auto eth0
+iface eth0 inet DHCP
+
+
+auto eth1
+iface eth1 static
+address 192.168.9.1
+netmask 255.255.255.0
+
+auto eth2
+iface eth1 static
+address 192.168.42.1
+netmask 255.255.255.0
+
+//e reiniciar as placas de rede
+ifdown -a
+ifup -a
+
+//para carregar a interface externa (NAT) 
+iptables -t nat -o eth0 -A POSTROUTING -j MASCARADE 
+
+
+//entrando no arquivo ip_forward (reencaminhamento de pacotes, transformando assim a máquina em gateway)
+cd /proc/sys/net/ipv4/ip_forward
+
+
+//se não souber o diretório dar um find -name ip_forward no diretório raiz /
+
+
+
+//para permitir o reecaminhamento basta mudar o conteúdo para 1
+nano /proc/sys/net/ipv4/ip_forward
+
+1
+cd 
+
+//podemos criar um script em shell para automatizar estes comandos, e eles serem realizados sempre que iniciar a máquina
+nano /etc/init.d/shell.sh
+
+# !/bin/bash
+iptables -t nat -o eth0 -A POSiptablesTROUTING -j MASQUERADE
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+//Tornar o script executável:
+
+chmoh 755 shell.sh
+
+//Agora inicializar o arquivo shell.sh
+
+update-rc.d shell.sh defaults
+
+//executar arquivo shell
+cd /etc/init.d/
+ ./shell.sh
+
+//instalando o samba
+apt-get install update
+apt-get install smd.d
+
+
+//inicializando o serviço
+service smbd start
+
+//verificando status do serviço
+service smbd status
+
+//iniciando serviço de DHCP
+apt-get install isc-dhcp-server
+
+//Configurações no arquivo dhcpd.conf , mas antes efetuar o backup
+cd /etc/dhcp/dhcp.conf/
+cp dhcp.conf dhcp.conf.copia
+
+//arquivo , descomentar os parâmetros utilizando o nome e dominio do server1
+ddns-update-style none;
+
+##colocando os nomes do nosso domínio e servidor
+option domain-name "gw1.com"
+option domain-name-servers 192.168.9.11, 8.8.8.8
+
+#tempo do ip
+defaut-lease-time 600;
+max-lease 7200;
+apt
+authoritative;
+find 
+##esta parte do arquivo delimita o range de IPs 
+
+ 
+subnet 192.168.42.0 netmask 255.255.255.0 {
+	range 192.168.42.10 192.168.42.200;
+	option routers 192.168.42.254;
+}
+
+//configurando arquivo
+nano /etc/default/isc-dhcp-server
+##qual interface vai distribuir IPs no caso a eth2 , cliente
+
+INTERFACES="eth2"
+
+//reiniciando o serviço
+/etc/init.d/isc-dhcp-server restart
+
+//para testar podemos consultar o arquivo leases com o histórico de 
+entrega de ips 
+cat /var/lib/dhcp.leases
+
+
+// Servidor 2
+
+//configurar interfaces
+nano /etc/network/interfaces
+
+auto eth0
+iface eth1 static
+address 192.168.9.11
+netmask 255.255.255.0
+gateway 192.168.9.1
+
+//instalando o pacote de DNS
+apt-get install bind9
+
+//configurando o arquivo hosts
+nano /etc/hosts
+
+192.168.9.11 serv2.gw1.com gw1.com
+
+//testando
+ping serv2.gw1.com
+
+//configurando o arquivo resolv.conf
+
+nano /etc/resolv.conf
+
+#para falar quem é o cliente dns da máquina
+nameserver 192.168.9.11
+
+
+
+//configurando 
+nano  /etc/bind/named.conf.local
+##zonas de mapeamento
+
+zone "gw1.com" {
+ 	type master; 
+	file "/etc/bind/db.gw1";
+};
+
+//configurando DNS
+nano /etc/bind/named.conf.options
+
+##encaminhando
+
+forwarders {
+	192.168.2.1;
+	8.8.8.8;
+
+};
+
+//configurando arquivo criado db.gw1 usando o arquivo já existente 
+cd  /etc/bind/
+cp db.local db.gw1
+nano /etc/bind/db.gw1
+
+#colocando o nome do domínio e o administrador (root) 
+
+IN SOA serv2.gw1.com. root.gw1.com.
+
+gw1.com. IN NS serv2.gw1.com.
+
+#atribuindo o domínio ao ip
+
+serv2.gw1.com. IN A 192.168.9.11
+
+#nome da maq ao ip
+serv2 IN A 192.168.9.11
+
+#CNAME
+www IN CNAME gw1.com.
+
+
+//Riniciando o serviço 
+service bind9 restart
+
+//testando 
+ping www.gw1.com
+
+
+//intalando apache
+sudo apt-get update && sudo apt-get upgrade
+apt-get install apache2
+
+//configurando o apache2.conf
+/etc/apache2/apache2.conf
+##no arquivo deixar assim: 
+KeepAlive Off
+
+//reiniciar o serviço
+
+service apache2 restart
+
+
+  **nao sei se vai ser assim:: a2dissite 000-default.conf
+//criar configurações para uma página  teste
+
+nano /etc/apache2/sites-available/gw1.com.conf
+
+<VirtualHost *:80>
+     ServerAdmin jaimeserv2@gw1.com
+     ServerName gw1.com
+     ServerAlias www.gw1.com
+     DocumentRoot /var/www/gw1.com/nasaro_html/
+     ErrorLog /var/www/gw1.com/logs/error.log
+     CustomLog /var/www/gw1.com/logs/access.log combined
+</VirtualHost>
+
+//criando a página teste
+ mkdir -p /var/www/gw1.com/nasaro_html
+ mkdir /var/www/gw1.com/logs
+
+//Deixando o site enable
+a2ensite example.com.conf
+
+//reiniciar o serviço
+
+service apache2 restart
